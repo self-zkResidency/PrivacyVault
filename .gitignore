@@ -1,14 +1,35 @@
-# Compiler files
+# Foundry
 cache/
 out/
+broadcast/*/31337/
+broadcast/**/dry-run/
 
-# Ignores development broadcast logs
-!/broadcast
-/broadcast/*/31337/
-/broadcast/**/dry-run/
+# Logs/Reports temporales
+report/
+coverage/
+coverage.json
+lcov.info
 
-# Docs
-docs/
+# Dependencias
+node_modules/
 
-# Dotenv file
+# Entornos/Secrets
 .env
+.env.*
+!.env.example
+
+# SO/Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.code-workspace
+
+# Paquetes/lockfiles generados por herramientas (si no los versionas)
+pnpm-lock.yaml
+yarn.lock
+
+# Artifacts de pruebas locales
+.anvil/
