@@ -20,6 +20,8 @@ contract MockHubV2 {
 
     function setShouldPass(bool v) external { shouldPass = v; }
     
+    function setTarget(address _target) external { target = _target; }
+    
     function setNextOutput(ISelfVerificationRoot.GenericDiscloseOutputV2 calldata out) external {
         nextOutput = out;
     }

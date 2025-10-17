@@ -72,13 +72,19 @@ $ cast --help
 ## Deploy Details
 
 ### Dirección del Contrato 
-0x950650FdA9C97c24aA90C6f0C3e8d9DDbA4a48Fb
-[See in the explorer](https://sepolia.celoscan.io/address/0x950650fda9c97c24aa90c6f0c3e8d9ddba4a48fb#code)
+0xA9fDfaBb124b94613d9325CD5B05B0c7f55e4B33
+[See in the explorer](https://sepolia.celoscan.io/address/0xA9fDfaBb124b94613d9325CD5B05B0c7f55e4B33#code)
 
 ### **Red: Celo Sepolia (Chain ID: 11142220)**
 
 ### **Hub Self: 0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74**
 
-Scope: 4572065023515964474095863763377921919679900023143026574058798434490833940887
+Scope: proofOfCountry
+6125470500142958581227709884126720916323907203976840099885005295091866254916
 
-cUSD Token: 0x874069fa1eb16d44d622f2e0ca25eea172369bc1
+cUSD Token: 0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b
+
+ConfigId:
+  0xe45a1940166a7c6d08d028debc27e5314e322408711f717545d2810015af260f
+
+[Verified SC](https://celo-sepolia.blockscout.com/address/0xa9fdfabb124b94613d9325cd5b05b0c7f55e4b33)

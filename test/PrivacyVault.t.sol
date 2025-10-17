@@ -23,7 +23,7 @@ contract PrivacyVaultTest is Test {
 
         // Raw config (en prod el Hub valida países/OFAC; aquí solo necesitamos id)
         string[] memory forb = new string[](1);
-        forb[0] = "UNITED_STATES";
+        forb[0] = "USA";
 
         SelfUtils.UnformattedVerificationConfigV2 memory rawCfg = SelfUtils.UnformattedVerificationConfigV2({
             olderThan: 18,
@@ -32,11 +32,11 @@ contract PrivacyVaultTest is Test {
         });
 
         // Deploy vault con hub = mock
-        // scopeSeed: "proof-of-country"
-        hub = new MockHubV2(address(0)); // placeholder
-        vault = new PrivacyVault(address(hub), "proof-of-country", address(cUSD), rawCfg);
-        // conectar el mock al vault real
-        hub = new MockHubV2(address(vault));
+        // scopeSeed: "proofOfCountry"
+        hub = new MockHubV2(address(0)); // placeholder inicial
+        vault = new PrivacyVault(address(hub), "proofOfCountry", address(cUSD));
+        // Conectar el hub al vault
+        hub.setTarget(address(vault));
     }
     
     // helper: construye output permitido
@@ -45,12 +45,12 @@ contract PrivacyVaultTest is Test {
         out.userIdentifier = uint256(uint160(address(0x1111)));
         out.nullifier = 777;
         out.forbiddenCountriesListPacked = [uint256(0), uint256(0), uint256(0), uint256(0)];
-        out.issuingState = "MEXICO";
+        out.issuingState = "MEX";
         string[] memory name = new string[](2);
         name[0] = "Satoshi"; name[1] = "Nakamoto";
         out.name = name;
         out.idNumber = "ABC123";
-        out.nationality = "MEXICAN";
+        out.nationality = "MEX";
         out.dateOfBirth = "01-01-90";
         out.gender = "M";
         out.expiryDate = "01-01-30";
@@ -86,9 +86,16 @@ contract PrivacyVaultTest is Test {
         assertEq(cUSD.balanceOf(depositor), amount);
         assertEq(cUSD.balanceOf(address(vault)), 0);
 
-        // Ejecuta depósito → verify → callback → transferFrom
+        // Paso 1: Verificar usuario
         vm.prank(depositor);
-        vault.deposit(proofPayload, userContextData);
+        vault.verifyUser(proofPayload, userContextData);
+        
+        // Verificar que la verificacion fue exitosa
+        assertTrue(vault.verificationSuccessful(), "verificacion debe ser exitosa");
+        
+        // Paso 2: Ejecutar depósito
+        vm.prank(depositor);
+        vault.executeDeposit();
 
         // Después
         assertEq(cUSD.balanceOf(depositor), 0, "depositor debe quedar sin fondos");
@@ -108,15 +115,15 @@ function test_Deposit_BlockedCountry_NoTransfer() public {
 
         hub.setShouldPass(false); // simula failing verification
         ISelfVerificationRoot.GenericDiscloseOutputV2 memory out = _mkOutputAllowed();
-        out.issuingState = "UNITED_STATES"; // si el Hub aplicara la política, fallaría
+        out.issuingState = "USA"; // si el Hub aplicara la política, fallaría
         hub.setNextOutput(out);
 
         (bytes memory proofPayload, bytes memory userContextData) = _mkInputs(depositor, amount);
 
-        // Ejecuta, pero el mock revierte en verify → depósito no ocurre
+        // Ejecuta, pero el mock revierte en verify → verificación no ocurre
         vm.expectRevert(bytes("VerificationFailed"));
         vm.prank(depositor);
-        vault.deposit(proofPayload, userContextData);
+        vault.verifyUser(proofPayload, userContextData);
 
         // Balances intactos
         assertEq(cUSD.balanceOf(depositor), amount);

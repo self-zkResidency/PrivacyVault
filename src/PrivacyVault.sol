@@ -9,6 +9,7 @@ import {ISelfVerificationRoot} from "@selfxyz/contracts/interfaces/ISelfVerifica
 import {IIdentityVerificationHubV2} from "@selfxyz/contracts/interfaces/IIdentityVerificationHubV2.sol";
 import {SelfStructs} from "@selfxyz/contracts/libraries/SelfStructs.sol";
 import {SelfUtils} from "@selfxyz/contracts/libraries/SelfUtils.sol";
+import {CountryCodes} from "@selfxyz/contracts/libraries/CountryCode.sol";
 
 /**
  * @title PrivacyVault
@@ -25,9 +26,12 @@ contract PrivacyVault is SelfVerificationRoot, Ownable {
 
     /// @notice nullifiers ya usados (evita doble verificación)
     mapping(uint256 => bool) public usedNullifier;
-    
-    /// @notice países bloqueados
-    mapping(bytes32 => bool) public blockedCountry;
+
+    /// @notice Storage para el nuevo flujo de verificación
+    bool public verificationSuccessful;
+    ISelfVerificationRoot.GenericDiscloseOutputV2 public lastOutput;
+    bytes public lastUserData;
+    address public lastUserAddress;
 
     event DepositValidated(
         address indexed depositor,
@@ -37,70 +41,42 @@ contract PrivacyVault is SelfVerificationRoot, Ownable {
         uint256 nullifier
     );
 
+    event VerificationCompleted(ISelfVerificationRoot.GenericDiscloseOutputV2 output, bytes userData);
     event ConfigIdUpdated(bytes32 prevId, bytes32 newId);
-    event CountryBlocklistUpdated(bytes32 indexed countryKey, bool blocked);
 
     error AlreadyUsedNullifier();
     error InvalidUserData();
     error OfacFlagged();
-    error CountryBlocked(string issuingState, string nationality);
 
 
     constructor(
         address hubV2,
         string memory scopeSeed,
-        address cUsdToken,
-        SelfUtils.UnformattedVerificationConfigV2 memory rawCfg
+        address cUsdToken // 0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b
     ) SelfVerificationRoot(hubV2, scopeSeed) Ownable(msg.sender) {
         CUSD_TOKEN = IERC20(cUsdToken);
 
+        // Configuración con países prohibidos
+        string[] memory forbiddenCountries = new string[](4);
+        forbiddenCountries[0] = CountryCodes.UNITED_STATES;
+        forbiddenCountries[1] = CountryCodes.IRAN;
+        forbiddenCountries[2] = CountryCodes.COLOMBIA;
+        forbiddenCountries[3] = CountryCodes.NORTH_KOREA;
+        
+        SelfUtils.UnformattedVerificationConfigV2 memory rawConfig = SelfUtils.UnformattedVerificationConfigV2({
+            olderThan: 18,
+            forbiddenCountries: forbiddenCountries,
+            ofacEnabled: true
+        });
+
         // 1) Formatear y registrar config en el Hub → devuelve configId
-        verificationConfig = SelfUtils.formatVerificationConfigV2(rawCfg);
+        verificationConfig = SelfUtils.formatVerificationConfigV2(rawConfig);
         verificationConfigId = IIdentityVerificationHubV2(hubV2).setVerificationConfigV2(verificationConfig);
     }
 
     function setConfigId(bytes32 configId) external onlyOwner {
         emit ConfigIdUpdated(verificationConfigId, configId);
         verificationConfigId = configId;
-    }
-
-    /// @dev countryStr debe venir ya normalizado (p.ej., "MEX" o "MX").
-    ///      Se calcula el hash vía inline assembly para evitar asignaciones en memoria.
-    function setCountryBlocked(string calldata countryStr, bool blocked) external onlyOwner {
-        bytes32 key = _keccakStringCalldata(countryStr);
-        blockedCountry[key] = blocked;
-        emit CountryBlocklistUpdated(key, blocked);
-    }
-
-    /// @dev Hash eficiente (keccak256) de string calldata sin conversiones intermedias.
-    function _keccakStringCalldata(string calldata s) internal pure returns (bytes32 out) {
-        assembly {
-            let off := s.offset
-            let len := s.length
-            // Copiamos a memoria una sola vez para usar keccak256
-            let ptr := mload(0x40)
-            calldatacopy(ptr, off, len)
-            out := keccak256(ptr, len)
-            mstore(0x40, add(ptr, len))
-        }
-    }
-
-    // -------------------------------------------------
-    // User entrypoint
-    // -------------------------------------------------
-    /**
-     * @notice Solicita depósito validado por Self.
-     * @param proofPayload |32 bytes attestationId| proofData |
-     * @param userContextData |32 destChainId|32 userIdentifier| userDefinedData |
-     * @dev userDefinedData DEBE incluir: abi.encode(depositor, amount)
-     *      para que el hook tenga el address y monto exacto a transferir.
-     */
-    function deposit(
-        bytes calldata proofPayload,
-        bytes calldata userContextData
-    ) external {
-        // El Hub validará y nos devolverá el callback a onVerificationSuccess -> customVerificationHook
-        verifySelfProof(proofPayload, userContextData);
     }
 
      /// @dev Devuelve el configId (estático para MVP)
@@ -112,31 +88,64 @@ contract PrivacyVault is SelfVerificationRoot, Ownable {
         return verificationConfigId;
     }
 
-    /// @dev Aquí hacemos TODA la lógica post-verificación: país/OFAC/nullifier y transferFrom.
+    /**
+     * @notice Solicita verificación de Self (países prohibidos, OFAC, edad).
+     * @param proofPayload |32 bytes attestationId| proofData |
+     * @param userContextData |32 destChainId|32 userIdentifier| userDefinedData |
+     * @dev userDefinedData DEBE incluir: abi.encode(depositor, amount)
+     *      para que el depósito posterior tenga el address y monto exacto a transferir.
+     */
+    function verifyUser(
+        bytes calldata proofPayload,
+        bytes calldata userContextData
+    ) external {
+        // El Hub validará y nos devolverá el callback a onVerificationSuccess -> customVerificationHook
+        verifySelfProof(proofPayload, userContextData);
+    }
+
+    /// @dev Hook de verificación exitosa - solo guarda los datos como en ProofOfHuman
     function customVerificationHook(
         ISelfVerificationRoot.GenericDiscloseOutputV2 memory output,
         bytes memory userData
     ) internal override {
+        verificationSuccessful = true;
+        lastOutput = output;
+        lastUserData = userData;
+        lastUserAddress = address(uint160(output.userIdentifier));
+
+        emit VerificationCompleted(output, userData);
+    }
+
+    /**
+     * @notice Ejecuta el depósito después de verificación exitosa.
+     * @dev Solo puede ser llamado si verificationSuccessful es true.
+     *      Ejecuta todas las validaciones y transfiere los cUSD.
+     */
+    function executeDeposit() external {
+        if (!verificationSuccessful) revert InvalidUserData();
+
         // 1) anti-replay
-        if (usedNullifier[output.nullifier]) revert AlreadyUsedNullifier();
-        usedNullifier[output.nullifier] = true;
+        if (usedNullifier[lastOutput.nullifier]) revert AlreadyUsedNullifier();
+        usedNullifier[lastOutput.nullifier] = true;
 
         // 2) OFAC (si el config tiene ofacEnabled, el Hub ya corta; esto es doble seguro)
-        if (output.ofac[0] || output.ofac[1] || output.ofac[2]) revert OfacFlagged();
+        if (lastOutput.ofac[0] || lastOutput.ofac[1] || lastOutput.ofac[2]) revert OfacFlagged();
 
-        // 3) País — el Hub también valida forbiddenCountries; aquí solo log/defensa extra.
-        //    Si quieres re-chequear manualmente, podrías comparar contra tu propia lista.
-        //    Para MVP, basta con confiar en el config registrado + loggear:
-        //    output.issuingState y output.nationality están “disclosed”.
+        // 3) Países prohibidos - ya validados por el Hub usando forbiddenCountries del config
+        //    lastOutput.issuingState y lastOutput.nationality están "disclosed" para logging
 
         // 4) userData -> (depositor, amount) para transferFrom
-        if (userData.length < 64) revert InvalidUserData();
-        (address depositor, uint256 amount) = abi.decode(userData, (address, uint256));
+        if (lastUserData.length < 64) revert InvalidUserData();
+        (address depositor, uint256 amount) = abi.decode(lastUserData, (address, uint256));
 
         // 5) transferir cUSD (requiere approve previo del usuario)
         CUSD_TOKEN.safeTransferFrom(depositor, address(this), amount);
 
-        emit DepositValidated(depositor, amount, output.issuingState, output.nationality, output.nullifier);
+        emit DepositValidated(depositor, amount, lastOutput.issuingState, lastOutput.nationality, lastOutput.nullifier);
+
+        // Reset para evitar reutilización
+        verificationSuccessful = false;
+        lastUserAddress = address(0);
 
         // (más adelante) aquí podrías crear la nota privada en ShieldedPool: depositNote(commitment, encMemo)
     }
