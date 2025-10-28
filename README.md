@@ -71,20 +71,32 @@ $ cast --help
 
 ## Deploy Details
 
-### Dirección del Contrato 
-0xA9fDfaBb124b94613d9325CD5B05B0c7f55e4B33
-[See in the explorer](https://sepolia.celoscan.io/address/0xA9fDfaBb124b94613d9325CD5B05B0c7f55e4B33#code)
+### **Dirección del Contrato** 
+`0x6EFB6d952013e9b97a756295a33F3718BD71d0b2`
+[Ver en Celoscan](https://sepolia.celoscan.io/address/0x6EFB6d952013e9b97a756295a33F3718BD71d0b2#code)
 
 ### **Red: Celo Sepolia (Chain ID: 11142220)**
 
-### **Hub Self: 0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74**
+### **Configuración del Deploy**
+- **Hub Self**: `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74`
+- **Scope Seed**: `nomi-money`
+- **Relayer**: `0x4A3f4D82a075434b24ff2920C573C704af776f6A`
+- **Owner**: `0x4A3f4D82a075434b24ff2920C573C704af776f6A`
 
-Scope: proofOfCountry
-6125470500142958581227709884126720916323907203976840099885005295091866254916
+### **Scope Hash**
+`4607975776627248998301084322452715517197231780639306486488199544010280601088`
 
-cUSD Token: 0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b
+### **Verification Config ID**
+`0xc0bfc2788be86217dccd2f8a595ea69d7a9ae4e39ac5cd6732946c0f38f60f1e`
 
-ConfigId:
-  0xe45a1940166a7c6d08d028debc27e5314e322408711f717545d2810015af260f
+### **Configuración de Verificación**
+- **Países Prohibidos**: USA, IRAN, AFGHANISTAN, NORTH_KOREA
+- **Edad Mínima**: 18 años
+- **Verificación OFAC**: Habilitada
+- **Período de Elegibilidad**: 3 días
 
-[Verified SC](https://celo-sepolia.blockscout.com/address/0xa9fdfabb124b94613d9325cd5b05b0c7f55e4b33)
+### **Arquitectura**
+- **Tipo**: Non-custodial, audit-friendly, Nightfall-oriented
+- **Integración**: Nightfall 4 + Self Verification
+- **Tokens**: Compatible con cualquier stablecoin
+- **Flujo**: Intent-based deposit system
